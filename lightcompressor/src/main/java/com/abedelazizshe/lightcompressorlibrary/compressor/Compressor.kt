@@ -430,11 +430,15 @@ object Compressor {
             streamableFile?.let {
                 try {
                     val result = StreamableVideo.start(`in` = cacheFile, out = File(it))
-                    resultFile = File(it)
-                    if (result && cacheFile.exists()) {
-                        cacheFile.delete()
+                    if (result) {
+                        // Rewrite succeeded: switch to the fast-start file and drop the raw one.
+                        resultFile = File(it)
+                        if (cacheFile.exists()) {
+                            cacheFile.delete()
+                        }
                     }
-
+                    // If result is false, the source was already fast-start; StreamableVideo
+                    // deleted the unused output file, so keep cacheFile as the result.
                 } catch (e: Exception) {
                     printException(e)
                 }

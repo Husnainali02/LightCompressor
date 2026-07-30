@@ -149,11 +149,13 @@ object VideoCompressor : CoroutineScope by MainScope() {
 
                     // Runs in Main(UI) Thread
                     if (result.success) {
+                        // result.path is already the final (streamable or not) file name;
+                        // passing isStreamable here would re-append "_temp" and break cleanup.
                         val savedFile = saveVideoFile(
                             context,
                             result.path,
                             storageConfiguration,
-                            isStreamable,
+                            null,
                             configuration.videoNames[i],
                             shouldSave = true
                         )
