@@ -419,13 +419,25 @@ object Compressor {
                     mediaMuxer.finishMovie()
                 } catch (e: Exception) {
                     printException(e)
+                    return Result(id, success = false, failureMessage = e.message)
                 }
 
             } catch (exception: Exception) {
                 printException(exception)
+                return Result(id, success = false, failureMessage = exception.message)
             }
 
             var resultFile = cacheFile
+
+            if (!cacheFile.exists() || cacheFile.length() == 0L) {
+                // Nothing above threw, but the muxer never actually produced usable output -
+                // never report success for a file that isn't there.
+                return Result(
+                    id,
+                    success = false,
+                    failureMessage = "Compressed output file is missing or empty"
+                )
+            }
 
             streamableFile?.let {
                 try {
