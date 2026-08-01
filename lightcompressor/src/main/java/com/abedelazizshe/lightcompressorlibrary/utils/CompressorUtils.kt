@@ -102,7 +102,13 @@ object CompressorUtils {
                 MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR
             )
 
-
+            // This is an offline transcode, not a live/real-time feed: tell the encoder it
+            // doesn't need to pace itself to the source frame rate and can run at maximum
+            // throughput instead.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                setInteger(MediaFormat.KEY_PRIORITY, 1) // 0 = realtime, 1 = best-effort
+                setInteger(MediaFormat.KEY_OPERATING_RATE, Short.MAX_VALUE.toInt())
+            }
 
             getColorStandard(inputFormat)?.let {
                 setInteger(MediaFormat.KEY_COLOR_STANDARD, it)

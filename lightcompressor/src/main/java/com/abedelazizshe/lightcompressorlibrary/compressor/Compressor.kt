@@ -575,6 +575,12 @@ object Compressor {
         val decoder = MediaCodec.createDecoderByType(inputFormat.getString(MediaFormat.KEY_MIME)!!)
         //}
 
+        // Same reasoning as the encoder: this is an offline transcode, so let the decoder
+        // output frames as fast as the hardware can instead of pacing to the source frame rate.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            inputFormat.setInteger(MediaFormat.KEY_OPERATING_RATE, Short.MAX_VALUE.toInt())
+        }
+
         decoder.configure(inputFormat, outputSurface.getSurface(), null, 0)
 
         return decoder
