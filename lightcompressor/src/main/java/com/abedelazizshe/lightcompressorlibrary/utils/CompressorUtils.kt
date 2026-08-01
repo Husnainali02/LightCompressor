@@ -70,18 +70,21 @@ object CompressorUtils {
         inputFormat: MediaFormat,
         outputFormat: MediaFormat,
         newBitrate: Int,
+        useHighestVideoProfile: Boolean = true,
     ) {
         val newFrameRate = getFrameRate(inputFormat)
         val iFrameInterval = getIFrameIntervalRate(inputFormat)
         outputFormat.apply {
 
             // according to https://developer.android.com/media/optimize/sharing#b-frames_and_encoding_profiles
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && useHighestVideoProfile) {
                 val type = outputFormat.getString(MediaFormat.KEY_MIME)
                 val higherLevel = getHighestCodecProfileLevel(type)
                 Log.i("Output file parameters", "Selected CodecProfileLevel: $higherLevel")
                 setInteger(MediaFormat.KEY_PROFILE, higherLevel)
             } else {
+                // Baseline skips the MediaCodecList capability query entirely and is the
+                // fastest AVC profile to encode/decode (no CABAC, no B-frames).
                 setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline)
             }
 
@@ -96,7 +99,7 @@ object CompressorUtils {
             setInteger(MediaFormat.KEY_BIT_RATE, newBitrate)
             setInteger(
                 MediaFormat.KEY_BITRATE_MODE,
-                MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR
+                MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR
             )
 
 
@@ -218,16 +221,24 @@ object CompressorUtils {
         }
     }
 
-    fun hasQTI(): Boolean {
+    // Device-wide codec query results below are cached: MediaCodecList enumeration is
+    // per-device, not per-video, and this function runs once per file compressed.
+
+    private val hasQTICache: Boolean by lazy {
         val list = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos
         for (codec in list) {
             Log.i("CODECS: ", codec.name)
             if (codec.name.contains("qti.avc")) {
-                return true
+                return@lazy true
             }
         }
-        return false
+        false
     }
+
+    fun hasQTI(): Boolean = hasQTICache
+
+    // ConcurrentHashMap: batch compression can run multiple compressVideo() calls concurrently.
+    private val highestCodecProfileLevelCache = java.util.concurrent.ConcurrentHashMap<String, Int>()
 
     /**
      * Get the highest profile level supported by the AVC encoder: High > Main > Baseline
@@ -236,21 +247,26 @@ object CompressorUtils {
         if (type == null) {
             return MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline
         }
+
+        highestCodecProfileLevelCache[type]?.let { return it }
+
         val list = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos
         val capabilities = list
             .filter { codec -> type in codec.supportedTypes && codec.name.contains("encoder") }
             .mapNotNull { codec -> codec.getCapabilitiesForType(type) }
 
-        capabilities.forEach { capabilitiesForType ->
-            val levels =  capabilitiesForType.profileLevels.map { it.profile }
-            return when {
+        // Only the first matching encoder's capabilities are consulted, matching prior behavior.
+        val result = capabilities.firstOrNull()?.let { capabilitiesForType ->
+            val levels = capabilitiesForType.profileLevels.map { it.profile }
+            when {
                 MediaCodecInfo.CodecProfileLevel.AVCProfileHigh in levels -> MediaCodecInfo.CodecProfileLevel.AVCProfileHigh
                 MediaCodecInfo.CodecProfileLevel.AVCProfileMain in levels -> MediaCodecInfo.CodecProfileLevel.AVCProfileMain
                 else -> MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline
             }
-        }
+        } ?: MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline
 
-        return MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline
+        highestCodecProfileLevelCache[type] = result
+        return result
     }
 }
 

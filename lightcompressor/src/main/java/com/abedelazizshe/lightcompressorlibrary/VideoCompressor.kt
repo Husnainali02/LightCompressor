@@ -103,67 +103,69 @@ object VideoCompressor : CoroutineScope by MainScope() {
         listener: CompressionListener,
     ) {
         var streamableFile: File? = null
-        for (i in uris.indices) {
 
-            val coroutineExceptionHandler = CoroutineExceptionHandler { _, throwable ->
-                listener.onFailure(i, throwable.message ?: "")
-            }
-            val coroutineScope = CoroutineScope(Job() + coroutineExceptionHandler)
+        // Files are compressed one at a time in a single job: most devices expose only one
+        // hardware MediaCodec encoder/decoder session, so launching every file in the batch
+        // concurrently makes them contend for that session instead of speeding up the batch.
+        job = CoroutineScope(Dispatchers.IO).launch {
+            for (i in uris.indices) {
+                try {
+                    val path = async { getMediaPath(context, uris[i]) }.await()
 
-            job = coroutineScope.launch(Dispatchers.IO) {
-
-                val job = async { getMediaPath(context, uris[i]) }
-                val path = job.await()
-
-                val desFile = saveVideoFile(
-                    context,
-                    path,
-                    storageConfiguration,
-                    isStreamable,
-                    configuration.videoNames[i],
-                    shouldSave = false
-                )
-
-                if (isStreamable)
-                    streamableFile = saveVideoFile(
+                    val desFile = saveVideoFile(
                         context,
                         path,
                         storageConfiguration,
-                        null,
+                        isStreamable,
                         configuration.videoNames[i],
                         shouldSave = false
                     )
 
-                desFile?.let {
-                    isRunning = true
-                    listener.onStart(i)
-                    val result = startCompression(
-                        i,
-                        context,
-                        uris[i],
-                        desFile.path,
-                        streamableFile?.path,
-                        configuration,
-                        listener,
-                    )
-
-                    // Runs in Main(UI) Thread
-                    if (result.success) {
-                        // result.path is already the final (streamable or not) file name;
-                        // passing isStreamable here would re-append "_temp" and break cleanup.
-                        val savedFile = saveVideoFile(
+                    if (isStreamable)
+                        streamableFile = saveVideoFile(
                             context,
-                            result.path,
+                            path,
                             storageConfiguration,
                             null,
                             configuration.videoNames[i],
-                            shouldSave = true
+                            shouldSave = false
                         )
 
-                        listener.onSuccess(i, result.size, savedFile?.path)
-                    } else {
-                        listener.onFailure(i, result.failureMessage ?: "An error has occurred!")
+                    desFile?.let {
+                        isRunning = true
+                        listener.onStart(i)
+                        val result = startCompression(
+                            i,
+                            context,
+                            uris[i],
+                            desFile.path,
+                            streamableFile?.path,
+                            configuration,
+                            listener,
+                        )
+
+                        // Runs in Main(UI) Thread
+                        if (result.success) {
+                            // result.path is already the final (streamable or not) file name;
+                            // passing isStreamable here would re-append "_temp" and break cleanup.
+                            val savedFile = saveVideoFile(
+                                context,
+                                result.path,
+                                storageConfiguration,
+                                null,
+                                configuration.videoNames[i],
+                                shouldSave = true
+                            )
+
+                            listener.onSuccess(i, result.size, savedFile?.path)
+                        } else {
+                            listener.onFailure(i, result.failureMessage ?: "An error has occurred!")
+                        }
                     }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (throwable: Throwable) {
+                    listener.onFailure(i, throwable.message ?: "")
                 }
             }
         }

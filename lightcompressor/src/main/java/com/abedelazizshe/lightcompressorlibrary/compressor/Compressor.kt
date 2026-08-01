@@ -144,7 +144,8 @@ object Compressor {
             extractor,
             listener,
             duration,
-            rotation
+            rotation,
+            configuration.useHighestVideoProfile,
         )
     }
 
@@ -160,7 +161,8 @@ object Compressor {
         extractor: MediaExtractor,
         compressionProgressListener: CompressionProgressListener,
         duration: Long,
-        rotation: Int
+        rotation: Int,
+        useHighestVideoProfile: Boolean,
     ): Result {
 
         if (newWidth != 0 && newHeight != 0) {
@@ -192,6 +194,7 @@ object Compressor {
                     inputFormat,
                     outputFormat,
                     newBitrate,
+                    useHighestVideoProfile,
                 )
 
                 val decoder: MediaCodec

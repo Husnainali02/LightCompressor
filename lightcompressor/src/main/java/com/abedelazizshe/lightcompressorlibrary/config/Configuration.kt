@@ -16,7 +16,10 @@ data class Configuration(
     var videoBitrateInMbps: Int? = null,
     var disableAudio: Boolean = false,
     val resizer: VideoResizer? = VideoResizer.auto,
-    var videoNames: List<String>
+    var videoNames: List<String>,
+    // When false, skips querying the device's supported AVC profile/level and encodes
+    // with the fastest (Baseline) profile instead of the highest one the encoder supports.
+    var useHighestVideoProfile: Boolean = true
 ) {
     @Deprecated("Use VideoResizer to override the output video dimensions.", ReplaceWith("Configuration(quality, isMinBitrateCheckEnabled, videoBitrateInMbps, disableAudio, resizer = if (keepOriginalResolution) null else VideoResizer.auto, videoNames)"))
     constructor(
